@@ -26,7 +26,7 @@ export const ComponentRenderer: React.FC<ComponentRendererProps> = ({ component 
       case 'Image':
         return <ImageComponent props={component.props} style={component.style} />;
       case 'Gallery':
-        return <GalleryComponent props={component.props} style={component.style} />;
+        return <GalleryComponent props={component.props} />;
       case 'Countdown':
         return <CountdownComponent component={component} />;
       case 'Timeline':
