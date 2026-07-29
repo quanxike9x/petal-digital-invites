@@ -23,13 +23,22 @@ interface ContainerRendererProps {
   onToggleComponentLock?: (compId: string) => void;
 }
 
+/**
+ * CONTAINER RENDERER 2.0
+ *
+ * FIX QUAN TRỌNG:
+ * - Vị trí component KHÔNG dùng left/top nữa mà dùng `transform: translate(x, y) rotate(deg)`.
+ *   react-moveable đọc/ghi trực tiếp vào transform, nên nếu React set left/top thì sẽ
+ *   "đánh nhau" với Moveable -> component nhảy loạn khi kéo/resize/xoay.
+ * - Bỏ toàn bộ HTML5 drag (draggable / onDragStart) trên component:
+ *   Moveable lo việc kéo tự do, DragContext chỉ còn lo kéo SECTION.
+ */
 export const ContainerRenderer: React.FC<ContainerRendererProps> = React.memo(({
   container,
   sectionId,
   selectedComponentId,
   renderMode = 'editor',
   onSelectComponent,
-  onChangeComponent,
   onDuplicateComponent,
   onDeleteComponent,
   onBringComponentToFront,
@@ -40,14 +49,7 @@ export const ContainerRenderer: React.FC<ContainerRendererProps> = React.memo(({
 }) => {
   const isEditorMode = renderMode === 'editor';
 
-  const {
-    isDragging,
-    dragType,
-    draggedCompId,
-    dropSectionId,
-    dropIndex,
-  } = useDragEngine();
-
+  const { isDragging, dragType } = useDragEngine();
   const isComponentDragging = isEditorMode && isDragging && dragType === 'component';
 
   const containerStyle: React.CSSProperties = useMemo(() => {
@@ -55,7 +57,10 @@ export const ContainerRenderer: React.FC<ContainerRendererProps> = React.memo(({
       position: 'relative',
       width: container.style?.width || '100%',
       minHeight: container.style?.height || '280px',
-      padding: typeof container.style?.padding === 'number' ? `${container.style.padding}px` : container.style?.padding || '0px',
+      padding:
+        typeof container.style?.padding === 'number'
+          ? `${container.style.padding}px`
+          : container.style?.padding || '0px',
       backgroundColor: container.style?.backgroundColor || 'transparent',
     };
   }, [container.style]);
@@ -74,9 +79,7 @@ export const ContainerRenderer: React.FC<ContainerRendererProps> = React.memo(({
   if (container.components.length === 0) {
     if (!isEditorMode) return null;
     return isComponentDragging ? (
-      <div
-        className="flex-1 py-12 border-2 border-dashed border-amber-500/80 rounded-2xl flex flex-col items-center justify-center text-xs font-bold text-amber-500 bg-amber-500/10 m-2 animate-pulse transition-all"
-      >
+      <div className="flex-1 py-12 border-2 border-dashed border-amber-500/80 rounded-2xl flex flex-col items-center justify-center text-xs font-bold text-amber-500 bg-amber-500/10 m-2 animate-pulse transition-all">
         <span>── Drop Component Here ──</span>
       </div>
     ) : (
@@ -88,94 +91,81 @@ export const ContainerRenderer: React.FC<ContainerRendererProps> = React.memo(({
   }
 
   return (
-    <div style={containerStyle} className="w-full relative">
+    <div style={containerStyle} className="w-full relative" data-container-id={container.id} data-section-id={sectionId}>
       {sortedComponents.map((comp, compIdx) => {
         const isCompSelected = isEditorMode && selectedComponentId === comp.id;
-        const isBeingDragged = isComponentDragging && draggedCompId === comp.id;
-        const isDropTargetHere = isComponentDragging && dropSectionId === sectionId && dropIndex === compIdx;
 
         const pos = getNormalizedComponentLayoutPosition(comp);
-        const currentWidthVal = pos.width;
-        const currentHeightVal = pos.height;
-        const zIndexVal = comp.layout?.layer?.order ?? (compIdx + 1);
+        const zIndexVal = comp.layout?.layer?.order ?? compIdx + 1;
         const isHidden = comp.layout?.layer?.hidden ?? false;
         const isLocked = comp.layout?.layer?.locked ?? false;
-        
-        const liveX = typeof pos.x === 'number' ? pos.x : 0;
-        const liveY = typeof pos.y === 'number' ? pos.y : 0;
+
+        const liveX = typeof pos.x === 'number' ? pos.x : parseFloat(String(pos.x)) || 0;
+        const liveY = typeof pos.y === 'number' ? pos.y : parseFloat(String(pos.y)) || 0;
+        const liveRotation = typeof pos.rotation === 'number' ? pos.rotation : 0;
 
         const wrapperStyle: React.CSSProperties = {
           position: 'absolute',
-          left: `${liveX}px`,
-          top: `${liveY}px`,
-          width: typeof currentWidthVal === 'number' ? `${currentWidthVal}px` : currentWidthVal,
-          height: typeof currentHeightVal === 'number' ? `${currentHeightVal}px` : currentHeightVal,
+          left: 0,
+          top: 0,
+          // Moveable điều khiển transform -> giữ nguyên format này để nó parse được
+          transform: `translate(${liveX}px, ${liveY}px) rotate(${liveRotation}deg)`,
+          transformOrigin: 'center center',
+          width: typeof pos.width === 'number' ? `${pos.width}px` : pos.width,
+          height: typeof pos.height === 'number' ? `${pos.height}px` : pos.height,
           minWidth: typeof pos.minWidth === 'number' ? `${pos.minWidth}px` : pos.minWidth,
           minHeight: typeof pos.minHeight === 'number' ? `${pos.minHeight}px` : pos.minHeight,
           maxWidth: typeof pos.maxWidth === 'number' ? `${pos.maxWidth}px` : pos.maxWidth,
           maxHeight: typeof pos.maxHeight === 'number' ? `${pos.maxHeight}px` : pos.maxHeight,
-          zIndex: zIndexVal,
+          zIndex: isCompSelected ? 1000 : zIndexVal,
           opacity: isHidden ? 0.3 : 1,
-          pointerEvents: isLocked ? 'none' : 'auto',
+          pointerEvents: isLocked || !isEditorMode ? (isLocked ? 'none' : 'auto') : 'auto',
           boxSizing: 'border-box',
-          overflow: 'hidden',
         };
 
         return (
-          <React.Fragment key={comp.id}>
-            {isDropTargetHere && (
-              <div className="absolute left-0 right-0 h-0.5 bg-amber-500 rounded-full shadow-md z-30 animate-pulse transition-all duration-200" />
+          <div
+            key={comp.id}
+            data-component-id={comp.id}
+            data-component-type={comp.type}
+            data-locked={isLocked ? 'true' : 'false'}
+            style={wrapperStyle}
+            onMouseDown={(e) => {
+              if (!isEditorMode || isLocked) return;
+              const target = e.target as HTMLElement;
+              if (target.closest('[data-floating-toolbar="true"]')) return;
+              e.stopPropagation();
+              if (onSelectComponent && selectedComponentId !== comp.id) onSelectComponent(comp);
+            }}
+            className={`rounded-lg ${
+              !isEditorMode
+                ? ''
+                : isCompSelected
+                ? 'cursor-move ring-2 ring-amber-500'
+                : 'hover:ring-1 hover:ring-blue-300/60 cursor-pointer'
+            }`}
+          >
+            {isEditorMode && isCompSelected && (
+              <FloatingComponentToolbar
+                selectedComponent={comp}
+                onDuplicate={(c) => onDuplicateComponent && onDuplicateComponent(c)}
+                onDelete={(id) => onDeleteComponent && onDeleteComponent(id)}
+                onBringToFront={() => onBringComponentToFront && onBringComponentToFront(comp.id)}
+                onSendToBack={() => onSendComponentToBack && onSendComponentToBack(comp.id)}
+                onMoveUp={() => onMoveComponentUp && onMoveComponentUp(comp.id)}
+                onMoveDown={() => onMoveComponentDown && onMoveComponentDown(comp.id)}
+                onToggleLock={() => onToggleComponentLock && onToggleComponentLock(comp.id)}
+              />
             )}
 
-            <div
-              key={comp.id}
-              data-component-id={comp.id}
-              data-component-type={comp.type}
-              style={wrapperStyle}
-              onMouseDown={(e) => {
-                if (!isEditorMode || isLocked) return;
-                const target = e.target as HTMLElement;
-                if (target.closest('[data-floating-toolbar="true"]')) return;
-                e.stopPropagation();
-                if (onSelectComponent) onSelectComponent(comp);
-              }}
-              onClick={(e) => {
-                if (!isEditorMode || isLocked) return;
-                const target = e.target as HTMLElement;
-                if (target.closest('[data-floating-toolbar="true"]')) return;
-                e.stopPropagation();
-                if (onSelectComponent) onSelectComponent(comp);
-              }}
-              className={`transition-all rounded-lg ${
-                !isEditorMode
-                  ? ''
-                  : isBeingDragged
-                  ? 'opacity-50 scale-[0.98] cursor-grabbing shadow-xl ring-2 ring-amber-400'
-                  : isCompSelected
-                  ? 'z-[1000] cursor-grab ring-2 ring-amber-500'
-                  : 'hover:ring-1 hover:ring-blue-300/60 cursor-grab'
-              }`}
-            >
-              {isEditorMode && isCompSelected && (
-                <FloatingComponentToolbar
-                  selectedComponent={comp}
-                  onDuplicate={(c) => onDuplicateComponent && onDuplicateComponent(c)}
-                  onDelete={(id) => onDeleteComponent && onDeleteComponent(id)}
-                  onBringToFront={() => onBringComponentToFront && onBringComponentToFront(comp.id)}
-                  onSendToBack={() => onSendComponentToBack && onSendComponentToBack(comp.id)}
-                  onMoveUp={() => onMoveComponentUp && onMoveComponentUp(comp.id)}
-                  onMoveDown={() => onMoveComponentDown && onMoveComponentDown(comp.id)}
-                  onToggleLock={() => onToggleComponentLock && onToggleComponentLock(comp.id)}
-                />
-              )}
-
-              <div className="w-full h-full">
-                <ComponentRenderer component={comp} />
-              </div>
+            <div className="w-full h-full overflow-hidden">
+              <ComponentRenderer component={comp} />
             </div>
-          </React.Fragment>
+          </div>
         );
       })}
     </div>
   );
 });
+
+ContainerRenderer.displayName = 'ContainerRenderer';

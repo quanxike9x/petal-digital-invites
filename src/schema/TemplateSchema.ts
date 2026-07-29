@@ -94,9 +94,9 @@ export function getSectionContainers(section: TemplateSection): ContainerInstanc
  * AUTOMATIC TRANSPARENT NORMALIZATION FOR COMPONENT RESIZING & RESIZE MODE
  */
 export function getNormalizedComponentLayoutPosition(comp: UnifiedComponentInstance): ComponentLayoutPosition {
-  const pos = comp.layout?.position || {};
-  const styleWidth = comp.style?.width;
-  const styleHeight = comp.style?.height;
+  const pos: ComponentLayoutPosition = comp.layout?.position || {};
+  const styleWidth = comp.style?.width as number | string | undefined;
+  const styleHeight = comp.style?.height as number | string | undefined;
   const defaultMode = getDefaultResizeModeForType(comp.type);
 
   return {
@@ -112,6 +112,7 @@ export function getNormalizedComponentLayoutPosition(comp: UnifiedComponentInsta
     resizeMode: pos.resizeMode || defaultMode,
     imageFit: pos.imageFit || 'cover',
     anchor: pos.anchor || 'top-left',
+    rotation: typeof pos.rotation === 'number' ? pos.rotation : 0,
   };
 }
 

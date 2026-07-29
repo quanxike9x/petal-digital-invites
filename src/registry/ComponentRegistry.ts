@@ -51,6 +51,8 @@ export interface ComponentLayoutPosition {
   resizeMode?: ResizeMode;
   imageFit?: ImageFitMode;
   anchor?: AnchorType;
+  /** Góc xoay của component (độ). Dùng bởi Moveable rotatable. */
+  rotation?: number;
 }
 
 export interface ComponentLayerInfo {
